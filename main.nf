@@ -14,6 +14,7 @@ log.info """\
     qsr truth vcfs  : ${params.qsrVcfs}
     output directory: ${params.outdir}
     fastqc          : ${params.fastqc}
+    fastp           : ${params.fastp}
     aligner         : ${params.aligner}
     variant caller  : ${params.variant_caller}
     bqsr            : ${params.bqsr}
@@ -30,6 +31,11 @@ if (params.index_genome) {
 if (params.fastqc) {
     include { FASTQC } from './modules/FASTQC'
 }
+
+if (params.fastp) {
+    include { FASTP } from './modules/fastp'
+}
+
 include { sortBam } from './modules/sortBam'
 include { markDuplicates } from './modules/markDuplicates'
 include { indexBam } from './modules/indexBam'
@@ -98,9 +104,14 @@ workflow {
         FASTQC(read_pairs_ch)
     }
 
+    //trim reads 
+    if (params.fastp) {
+        fastp_ch = FASTP(read_pairs_ch)
+    }
+
     // Align reads to the indexed genome
     if (params.aligner == 'bwa-mem') {
-        align_ch = alignReadsBwaMem(read_pairs_ch, indexed_genome_ch.collect())
+        align_ch = alignReadsBwaMem(fastp_ch, indexed_genome_ch.collect())
     } else if (params.aligner == 'bwa-aln') {
         align_ch = alignReadsBwaAln(read_pairs_ch, indexed_genome_ch.collect())
     }
