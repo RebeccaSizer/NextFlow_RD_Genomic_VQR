@@ -1,0 +1,8 @@
+data/
+work/
+results/
+*.log*
+.nextflow
+aws/
+*samplesheet*
+awscliv2.zip
