@@ -25,9 +25,6 @@ process indexGenome {
     """
     echo "Running Index Genome"
 
-    # Define index prefix based on fasta filename
-    indexPrefix="${genomeFasta.baseName}_bowtie2"
-
     # Generate BWA index
     bwa index "${genomeFasta}"
 

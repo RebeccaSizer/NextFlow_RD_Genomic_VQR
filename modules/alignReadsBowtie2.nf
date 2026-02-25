@@ -32,7 +32,8 @@ process alignReadsBowtie2 {
 }
 
 process convertSamToBam {
-    container 'biocontainers/samtools:v1.15.1_cv2'
+
+    container 'swglh/samtools:1.22.1'
 
     tag "$sample_id"
 
@@ -46,10 +47,10 @@ process convertSamToBam {
     """
     echo "Converting SAM to BAM for sample ${sample_id}"
     
-    samtools view -bS ${sample_id}.sam > ${sample_id}.bam
+    samtools view -bS ${sam_file} > ${sample_id}.bam
 
     echo "Conversion complete for sample ${sample_id}"
-    rm ${sample_id}.sam
+    rm ${sam_file}
     """
 }
     

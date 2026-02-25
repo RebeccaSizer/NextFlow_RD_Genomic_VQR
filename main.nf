@@ -63,6 +63,7 @@ if (params.aligner == 'bwa-mem') {
 } else {
     error "Unsupported aligner: ${params.aligner}. Please specify 'bwa-mem', 'bwa-aln', or 'bowtie2'."
 }
+include { convertSamToBam } from './modules/alignReadsBowtie2'
 
 if (params.variant_caller == 'haplotype-caller') {
     include { haplotypeCaller } from './modules/haplotypeCaller'
@@ -134,7 +135,9 @@ workflow {
     } else if (params.aligner == 'bwa-aln') {
         align_ch = alignReadsBwaAln(read_pairs_ch, indexed_genome_ch.collect())
     } else if (params.aligner == 'bowtie2') {
-        align_ch = alignReadsBowtie2(read_pairs_ch, (params.bowtie2_index))
+        sam_ch = alignReadsBowtie2(read_pairs_ch, Channel.value(params.bowtie2_index))
+        // Convert SAM to BAM
+        align_ch = convertSamToBam(sam_ch)
     }
 
     // Sort BAM files
