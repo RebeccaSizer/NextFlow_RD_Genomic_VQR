@@ -67,6 +67,8 @@ include { convertSamToBam } from './modules/alignReadsBowtie2'
 
 if (params.variant_caller == 'haplotype-caller') {
     include { haplotypeCaller } from './modules/haplotypeCaller'
+} else if (params.variant_caller == 'deepvariant') {
+    include { deepVariant } from './modules/deepVariant'
 } else {
     error "Unsupported variant caller: ${params.variant_caller}. Please specify 'haplotype-caller'."
 }
@@ -79,7 +81,7 @@ if (params.degraded_dna) {
 workflow {
 
     // User decides to index genome or not
-    if (params.index_genome && params.aligner == "bwa") {
+    if (params.index_genome && params.aligner == "bwa-mem") {
         // Flatten as is of format [fasta, [rest of files..]]
         indexed_genome_ch = indexGenome(params.genome_file).flatten()
     }
@@ -89,7 +91,7 @@ workflow {
         indexed_genome_ch = indexGenomeBowtie2(params.genome_file).flatten()
     }
 
-    else if (params.index_genome == false && params.aligner == "bwa") {
+    else if (params.index_genome == false && params.aligner == "bwa-mem") {
         indexed_genome_ch = Channel.fromPath(params.genome_index_files)
     }
 
@@ -177,6 +179,9 @@ workflow {
     // Run HaplotypeCaller on BQSR files
     if (params.variant_caller == "haplotype-caller") {
         gvcf_ch = haplotypeCaller(bqsr_ch, indexed_genome_ch.collect()).collect()
+    }
+    if (params.variant_caller == "deepvariant") {
+        gvcf_ch = deepVariant(bqsr_ch, indexed_genome_ch.collect()).collect()
     }
 
     // Now we map to create separate lists for sample IDs, VCF files, and index files
