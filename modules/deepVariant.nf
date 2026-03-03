@@ -5,10 +5,11 @@
  */
 
 process deepVariant {
-    
-    tag "$bamFile"
 
-    container 'google/deepvariant:1.4.0'
+    tag "$bamFile"
+    container 'google/deepvariant'
+    cpus 8
+    memory '30 GB'
 
     input:
     tuple val(sample_id), file(bamFile), file(bamIndex)
@@ -19,7 +20,6 @@ process deepVariant {
 
     script:
     """
-
     echo "Running DeepVariant for Sample: ${bamFile}"
 
     if [[ -n ${params.genome_file} ]]; then
@@ -37,24 +37,17 @@ process deepVariant {
 
     outputVcf="\$(basename ${bamFile} _sorted_dedup_recalibrated.bam).vcf"
 
-    # Use DeepVariant to call variants with specified annotations 
     /opt/deepvariant/bin/run_deepvariant \
         --model_type=WES \
         --ref="\${genomeFasta}" \
         --reads="${bamFile}" \
         --output_vcf="\${outputVcf}" \
-        --num_shards=16 \
-        --vcf_stats_report=true \
-
-    echo "Sample: ${sample_id} VCF: \${outputVcf}"
-
-    echo "VCF stats report generated" > stats_report.txt
-
-    echo "Variant Calling for Sample: ${sample_id} Complete"
+        --num_shards=${task.cpus} \
+        --vcf_stats_report=true
     """
 }
 
-process indexBam {
+process indexVcf {
 
     tag "$IndexVCF"
 

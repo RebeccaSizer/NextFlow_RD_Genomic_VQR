@@ -69,9 +69,10 @@ if (params.variant_caller == 'haplotype-caller') {
     include { haplotypeCaller } from './modules/haplotypeCaller'
 } else if (params.variant_caller == 'deepvariant') {
     include { deepVariant } from './modules/deepVariant'
+    include { indexVcf } from './modules/deepVariant'
 } else {
-    error "Unsupported variant caller: ${params.variant_caller}. Please specify 'haplotype-caller'."
-}
+    error "Unsupported variant caller: ${params.variant_caller}. Please specify 'haplotype-caller' or 'deepvariant'."
+} 
 
 if (params.degraded_dna) {
     include { mapDamage2 } from './modules/mapDamage'
@@ -136,10 +137,13 @@ workflow {
         align_ch = alignReadsBwaMem(read_pairs_ch_trimmed, indexed_genome_ch.collect())
     } else if (params.aligner == 'bwa-aln') {
         align_ch = alignReadsBwaAln(read_pairs_ch, indexed_genome_ch.collect())
-    } else if (params.aligner == 'bowtie2') {
-        sam_ch = alignReadsBowtie2(read_pairs_ch, Channel.value(params.bowtie2_index))
-        // Convert SAM to BAM
-        align_ch = convertSamToBam(sam_ch)
+    } else if (params.aligner == 'bowtie2' &&  params.index_genome) {
+            sam_ch = alignReadsBowtie2(read_pairs_ch, indexed_genome_ch.collect())
+            align_ch = convertSamToBam(sam_ch)
+    }
+    else if (params.aligner == 'bowtie2' &&  params.index_genome == false) {
+            sam_ch = alignReadsBowtie2(read_pairs_ch, (params.bowtie2_index))
+            align_ch = convertSamToBam(sam_ch)
     }
 
     // Sort BAM files
@@ -180,8 +184,10 @@ workflow {
     if (params.variant_caller == "haplotype-caller") {
         gvcf_ch = haplotypeCaller(bqsr_ch, indexed_genome_ch.collect()).collect()
     }
+    // Run DeepVariant on BQSR files
     if (params.variant_caller == "deepvariant") {
-        gvcf_ch = deepVariant(bqsr_ch, indexed_genome_ch.collect()).collect()
+        vcf_ch = deepVariant(bqsr_ch, indexed_genome_ch.collect()).collect()
+        gvcf_ch = indexVcf(vcf_ch)  // Index the VCF files produced by DeepVariant
     }
 
     // Now we map to create separate lists for sample IDs, VCF files, and index files

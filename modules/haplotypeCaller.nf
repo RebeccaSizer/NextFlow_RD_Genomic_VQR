@@ -51,4 +51,3 @@ process haplotypeCaller {
     echo "Variant Calling for Sample: ${sample_id} Complete"
     """
 }
-

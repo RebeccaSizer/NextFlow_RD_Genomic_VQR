@@ -1,6 +1,3 @@
-/*
- * Align reads to the indexed genome
- */
 process alignReadsBowtie2 {
     
     container 'biocontainers/bowtie2:v2.4.1_cv1'
@@ -22,7 +19,7 @@ process alignReadsBowtie2 {
     
     bowtie2 \
     --threads 4 \
-    -x ${bowtie2_index}/GRCh38_noalt_as \
+    -x ${bowtie2_index}/Homo_sapiens_assembly38_bowtie2 \
     -1 ${reads[0]} \
     -2 ${reads[1]} \
     -S ${sample_id}.sam
