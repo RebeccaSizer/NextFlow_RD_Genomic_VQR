@@ -25,6 +25,11 @@ process alignReadsBowtie2 {
     -x \$prefix \
     -1 ${reads[0]} \
     -2 ${reads[1]} \
+    --rg-id ${sample_id} \
+    --rg SM:${sample_id} \
+    --rg LB:lib1 \
+    --rg PL:ILLUMINA \
+    --rg PU:unit1 \
     -S ${sample_id}.sam
 
     echo "Alignment complete for sample ${sample_id}"

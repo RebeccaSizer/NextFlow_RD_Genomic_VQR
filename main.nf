@@ -117,13 +117,6 @@ workflow {
     // Create qsrc_vcf_ch channel
     qsrc_vcf_ch = Channel.fromPath(params.qsrVcfs)
 
-    //create a reference channel that includes the genome fasta, its index, and its dict file (if they exist)
-    reference_ch = Channel.fromPath([
-        params.genome_file,
-        params.genome_file + ".fai",
-        params.genome_file + ".dict"
-    ])
-
     // Set channel to gather read_pairs
     read_pairs_ch = Channel
         .fromPath(params.samplesheet)
@@ -207,8 +200,8 @@ workflow {
                 def vcf_index_files = listOfTuples.collate(3).collect { it[2] }
                 return tuple(sample_ids, vcf_files, vcf_index_files)
             }
-        combined_gvcf_ch = combineGVCFs(all_gvcf_ch, indexed_genome_ch.collect())
-        final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, indexed_genome_ch.collect())
+        combined_gvcf_ch = combineGVCFs(all_gvcf_ch, ref_ch.collect())
+        final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, ref_ch.collect())
     }
     // Run DeepVariant on BQSR files
     if (params.variant_caller == "deepvariant") {
@@ -239,9 +232,9 @@ workflow {
                 return "--resource:${baseName},${resourceArgs} ${file.getName()}" // Only the filename, no full path
             }
             .collect()
-        filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, indexed_genome_ch.collect(), qsrc_vcf_ch.collect())
+        filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, ref_ch.collect(), qsrc_vcf_ch.collect())
     } else {
-        filtered_vcf_ch = filterVCF(final_vcf_ch, indexed_genome_ch.collect())
+        filtered_vcf_ch = filterVCF(final_vcf_ch, ref_ch.collect())
     }
 
     // Conditionally run identityAnalysis if identity_analysis is true
