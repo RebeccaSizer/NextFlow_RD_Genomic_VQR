@@ -6,19 +6,19 @@ process indexGenomeBowtie2 {
 
     container 'biocontainers/bowtie2:v2.4.1_cv1'
 
-    publishDir("$params.outdir/GRCh38_noalt_as", mode: "copy")
+    publishDir("$params.outdir/GENOME_IDX", mode: "copy")
 
     input:
     path genomeFasta
 
     output:
-    tuple path(genomeFasta), path("${genomeFasta.baseName}_bowtie2.*")
+    tuple path(genomeFasta), path("${genomeFasta.baseName}.*")
 
     script:
     """
     echo "Running Index Genome"
 
-    indexPrefix=\$(basename ${genomeFasta} .fasta)_bowtie2
+    indexPrefix=\$(basename ${genomeFasta} .fasta)
 
     bowtie2-build "${genomeFasta}" "\$indexPrefix"
 

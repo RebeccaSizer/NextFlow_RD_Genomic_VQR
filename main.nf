@@ -97,12 +97,32 @@ workflow {
     }
 
     else if (params.index_genome == false && params.aligner == "bowtie2") {
-        indexed_genome_ch = Channel.fromPath(params.bowtie2_index)
+        indexed_genome_ch = Channel.fromPath(params.genome_index_files)
     }
 
 
+    //create a channel for fasta files 
+    if (params.aligner == "bowtie2") {
+    indexed_genome_ch = Channel.fromPath("$projectDir/results/GENOME_IDX/*.bt2")
+    ref_ch = Channel.fromPath([
+        "$projectDir/results/GENOME_IDX/Homo_sapiens_assembly38.fasta",
+        "$projectDir/results/GENOME_IDX/Homo_sapiens_assembly38.fasta.fai",
+        "$projectDir/results/GENOME_IDX/Homo_sapiens_assembly38.fasta.dict"
+    ])
+    
+    } else {
+        indexed_genome_ch = Channel.fromPath("$projectDir/results/GENOME_IDX/*.fast*")
+        ref_ch = indexed_genome_ch  // WGS/BWA index can be used as reference for GATK
+    }
     // Create qsrc_vcf_ch channel
     qsrc_vcf_ch = Channel.fromPath(params.qsrVcfs)
+
+    //create a reference channel that includes the genome fasta, its index, and its dict file (if they exist)
+    reference_ch = Channel.fromPath([
+        params.genome_file,
+        params.genome_file + ".fai",
+        params.genome_file + ".dict"
+    ])
 
     // Set channel to gather read_pairs
     read_pairs_ch = Channel
@@ -117,7 +137,6 @@ workflow {
                 error "Unexpected row format in samplesheet: $row"
             }
         }
-    read_pairs_ch.view()
 
     // Run FASTQC on read pairs
     if (params.fastqc) {
@@ -127,22 +146,18 @@ workflow {
     // Trim reads
     if (params.fastp) {
         FASTP(read_pairs_ch)
-        read_pairs_ch_trimmed = FASTP.out.trimmed_reads
+        read_pairs_ch = FASTP.out.trimmed_reads
     } else {
         read_pairs_ch = read_pairs_ch
     }
 
     // Align reads to the indexed genome
     if (params.aligner == 'bwa-mem') {
-        align_ch = alignReadsBwaMem(read_pairs_ch_trimmed, indexed_genome_ch.collect())
+        align_ch = alignReadsBwaMem(read_pairs_ch, ref_ch.collect())
     } else if (params.aligner == 'bwa-aln') {
-        align_ch = alignReadsBwaAln(read_pairs_ch, indexed_genome_ch.collect())
-    } else if (params.aligner == 'bowtie2' &&  params.index_genome) {
+        align_ch = alignReadsBwaAln(read_pairs_ch, ref_ch.collect())
+    } else if (params.aligner == 'bowtie2') {
             sam_ch = alignReadsBowtie2(read_pairs_ch, indexed_genome_ch.collect())
-            align_ch = convertSamToBam(sam_ch)
-    }
-    else if (params.aligner == 'bowtie2' &&  params.index_genome == false) {
-            sam_ch = alignReadsBowtie2(read_pairs_ch, (params.bowtie2_index))
             align_ch = convertSamToBam(sam_ch)
     }
 
@@ -182,28 +197,25 @@ workflow {
 
     // Run HaplotypeCaller on BQSR files
     if (params.variant_caller == "haplotype-caller") {
-        gvcf_ch = haplotypeCaller(bqsr_ch, indexed_genome_ch.collect()).collect()
+        gvcf_ch = haplotypeCaller(bqsr_ch, ref_ch.collect())
+
+        // Collect sample IDs, VCFs, and index files
+        all_gvcf_ch = gvcf_ch
+            .collect { listOfTuples ->
+                def sample_ids = listOfTuples.collate(3).collect { it[0] }
+                def vcf_files = listOfTuples.collate(3).collect { it[1] }
+                def vcf_index_files = listOfTuples.collate(3).collect { it[2] }
+                return tuple(sample_ids, vcf_files, vcf_index_files)
+            }
+        combined_gvcf_ch = combineGVCFs(all_gvcf_ch, indexed_genome_ch.collect())
+        final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, indexed_genome_ch.collect())
     }
     // Run DeepVariant on BQSR files
     if (params.variant_caller == "deepvariant") {
-        vcf_ch = deepVariant(bqsr_ch, indexed_genome_ch.collect()).collect()
-        gvcf_ch = indexVcf(vcf_ch)  // Index the VCF files produced by DeepVariant
+        vcf_ch = deepVariant(bqsr_ch, ref_ch.collect())
+        final_vcf_ch = indexVcf(vcf_ch)  // Index the VCF files produced by DeepVariant
     }
 
-    // Now we map to create separate lists for sample IDs, VCF files, and index files
-    all_gvcf_ch = gvcf_ch
-        .collect { listOfTuples ->
-            def sample_ids = listOfTuples.collate(3).collect { it[0] }   // Collect sample IDs from every 3rd element
-            def vcf_files = listOfTuples.collate(3).collect { it[1] }    // Collect VCF files
-            def vcf_index_files = listOfTuples.collate(3).collect { it[2] } // Collect VCF index files
-            return tuple(sample_ids, vcf_files, vcf_index_files)
-        }
-
-    // Combine GVCFs
-    combined_gvcf_ch = combineGVCFs(all_gvcf_ch, indexed_genome_ch.collect())
-
-    // Run GenotypeGVCFs
-    final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, indexed_genome_ch.collect())
 
     // Conditionally apply variant recalibration or filtering
     if (params.variant_recalibration) {

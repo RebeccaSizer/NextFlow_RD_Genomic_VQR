@@ -42,16 +42,16 @@ process deepVariant {
         --ref="\${genomeFasta}" \
         --reads="${bamFile}" \
         --output_vcf="\${outputVcf}" \
-        --num_shards=${task.cpus} \
+        --num_shards=8 \
         --vcf_stats_report=true
     """
 }
 
 process indexVcf {
 
-    tag "$IndexVCF"
+    tag { sample_id }
 
-    container 'bcftools/bcftools:1.15.1'
+    container 'staphb/bcftools:1.23'
 
     input:
     tuple val(sample_id), path(IndexVCF)
@@ -64,7 +64,7 @@ process indexVcf {
     echo "Indexing VCF for Sample: ${sample_id}"
 
     bcftools view -Oz "${IndexVCF}" -o "${sample_id}.vcf.gz"
-    bcftools index "${sample_id}.vcf.gz"
+    bcftools index -t "${sample_id}.vcf.gz"
     echo "Indexing complete for Sample: ${sample_id}"
     """
 
