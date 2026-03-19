@@ -65,6 +65,12 @@
                     "type": "boolean",
                     "description": "Index the genome if not already done",
                     "default": false
+
+                },
+                "genome_index_bowtie2": {
+                    "type": "string",
+                    "description": "Bowtie2 genome index files directory",
+                    "format": "directory-path"
                 },
                 "degraded_dna": {
                     "type": "boolean",
@@ -91,6 +97,16 @@
                     "type": "boolean",
                     "description": "Flag to indicate if identity analysis should be performed",
                     "default": false
+                },
+                "reference_fai": {
+                    "type": "string",
+                    "description": "Reference genome FASTA index file",
+                    "format": "file-path"
+                },
+                "reference_dict": {
+                    "type": "string",
+                    "description": "Reference genome sequence dictionary file",
+                    "format": "file-path"
                 }
             },
             "required": [
@@ -111,7 +127,9 @@
                 "degraded_dna",
                 "max_memory",
                 "max_time",
-                "max_cpus"
+                "max_cpus",
+                "reference_fai",
+                "reference_dict"
             ]
         }
     },
