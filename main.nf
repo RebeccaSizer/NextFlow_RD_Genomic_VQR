@@ -10,10 +10,12 @@ log.info """\
     samplesheet     : ${params.samplesheet}
     genome          : ${params.genome_file}
     genome index    : ${params.genome_index_files}
+    genome index bowtie2 : ${params.bowtie2_index}
     index genome    : ${params.index_genome}
     qsr truth vcfs  : ${params.qsrVcfs}
     output directory: ${params.outdir}
     fastqc          : ${params.fastqc}
+    fastp           : ${params.fastp}
     aligner         : ${params.aligner}
     variant caller  : ${params.variant_caller}
     bqsr            : ${params.bqsr}
@@ -26,10 +28,16 @@ log.info """\
 // Conditionally include modules
 if (params.index_genome) {
     include { indexGenome } from './modules/indexGenome'
+    include { indexGenomeBowtie2 } from './modules/indexGenomeBowtie2'
 }
 if (params.fastqc) {
     include { FASTQC } from './modules/FASTQC'
 }
+
+if (params.fastp) {
+    include { FASTP } from './modules/fastp'
+}
+
 include { sortBam } from './modules/sortBam'
 include { markDuplicates } from './modules/markDuplicates'
 include { indexBam } from './modules/indexBam'
@@ -50,14 +58,21 @@ if (params.aligner == 'bwa-mem') {
     include { alignReadsBwaMem } from './modules/alignReadsBwaMem'
 } else if (params.aligner == 'bwa-aln') {
     include { alignReadsBwaAln } from './modules/alignReadsBwaAln'
+} else if (params.aligner == 'bowtie2') {
+    include { alignReadsBowtie2 } from './modules/alignReadsBowtie2'
 } else {
-    error "Unsupported aligner: ${params.aligner}. Please specify 'bwa-mem' or 'bwa-aln'."
+    error "Unsupported aligner: ${params.aligner}. Please specify 'bwa-mem', 'bwa-aln', or 'bowtie2'."
 }
+include { convertSamToBam } from './modules/alignReadsBowtie2'
+
 if (params.variant_caller == 'haplotype-caller') {
     include { haplotypeCaller } from './modules/haplotypeCaller'
+} else if (params.variant_caller == 'deepvariant') {
+    include { deepVariant } from './modules/deepVariant'
+    include { indexVcf } from './modules/deepVariant'
 } else {
-    error "Unsupported variant caller: ${params.variant_caller}. Please specify 'haplotype-caller'."
-}
+    error "Unsupported variant caller: ${params.variant_caller}. Please specify 'haplotype-caller' or 'deepvariant'."
+} 
 
 if (params.degraded_dna) {
     include { mapDamage2 } from './modules/mapDamage'
@@ -67,14 +82,38 @@ if (params.degraded_dna) {
 workflow {
 
     // User decides to index genome or not
-    if (params.index_genome){
+    if (params.index_genome && params.aligner == "bwa-mem") {
         // Flatten as is of format [fasta, [rest of files..]]
         indexed_genome_ch = indexGenome(params.genome_file).flatten()
     }
-    else {
+
+    else if (params.index_genome && params.aligner == "bowtie2") {
+        // Flatten as is of format [fasta, [rest of files..]]
+        indexed_genome_ch = indexGenomeBowtie2(params.genome_file).flatten()
+    }
+
+    else if (params.index_genome == false && params.aligner == "bwa-mem") {
         indexed_genome_ch = Channel.fromPath(params.genome_index_files)
     }
 
+    else if (params.index_genome == false && params.aligner == "bowtie2") {
+        indexed_genome_ch = Channel.fromPath(params.genome_index_files)
+    }
+
+
+    //create a channel for fasta files 
+    if (params.aligner == "bowtie2") {
+    indexed_genome_ch = Channel.fromPath("$projectDir/results/GENOME_IDX/*.bt2")
+    ref_ch = Channel.fromPath([
+        "$projectDir/results/GENOME_IDX/Homo_sapiens_assembly38.fasta",
+        "$projectDir/results/GENOME_IDX/Homo_sapiens_assembly38.fasta.fai",
+        "$projectDir/results/GENOME_IDX/Homo_sapiens_assembly38.fasta.dict"
+    ])
+    
+    } else {
+        indexed_genome_ch = Channel.fromPath("$projectDir/results/GENOME_IDX/*.fast*")
+        ref_ch = indexed_genome_ch  // WGS/BWA index can be used as reference for GATK
+    }
     // Create qsrc_vcf_ch channel
     qsrc_vcf_ch = Channel.fromPath(params.qsrVcfs)
 
@@ -91,18 +130,28 @@ workflow {
                 error "Unexpected row format in samplesheet: $row"
             }
         }
-    read_pairs_ch.view()
 
     // Run FASTQC on read pairs
     if (params.fastqc) {
         FASTQC(read_pairs_ch)
     }
 
+    // Trim reads
+    if (params.fastp) {
+        FASTP(read_pairs_ch)
+        read_pairs_ch = FASTP.out.trimmed_reads
+    } else {
+        read_pairs_ch = read_pairs_ch
+    }
+
     // Align reads to the indexed genome
     if (params.aligner == 'bwa-mem') {
-        align_ch = alignReadsBwaMem(read_pairs_ch, indexed_genome_ch.collect())
+        align_ch = alignReadsBwaMem(read_pairs_ch, ref_ch.collect())
     } else if (params.aligner == 'bwa-aln') {
-        align_ch = alignReadsBwaAln(read_pairs_ch, indexed_genome_ch.collect())
+        align_ch = alignReadsBwaAln(read_pairs_ch, ref_ch.collect())
+    } else if (params.aligner == 'bowtie2') {
+            sam_ch = alignReadsBowtie2(read_pairs_ch, indexed_genome_ch.collect())
+            align_ch = convertSamToBam(sam_ch)
     }
 
     // Sort BAM files
@@ -141,23 +190,25 @@ workflow {
 
     // Run HaplotypeCaller on BQSR files
     if (params.variant_caller == "haplotype-caller") {
-        gvcf_ch = haplotypeCaller(bqsr_ch, indexed_genome_ch.collect()).collect()
+        gvcf_ch = haplotypeCaller(bqsr_ch, ref_ch.collect())
+
+        // Collect sample IDs, VCFs, and index files
+        all_gvcf_ch = gvcf_ch
+            .collect { listOfTuples ->
+                def sample_ids = listOfTuples.collate(3).collect { it[0] }
+                def vcf_files = listOfTuples.collate(3).collect { it[1] }
+                def vcf_index_files = listOfTuples.collate(3).collect { it[2] }
+                return tuple(sample_ids, vcf_files, vcf_index_files)
+            }
+        combined_gvcf_ch = combineGVCFs(all_gvcf_ch, ref_ch.collect())
+        final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, ref_ch.collect())
+    }
+    // Run DeepVariant on BQSR files
+    if (params.variant_caller == "deepvariant") {
+        vcf_ch = deepVariant(bqsr_ch, ref_ch.collect())
+        final_vcf_ch = indexVcf(vcf_ch)  // Index the VCF files produced by DeepVariant
     }
 
-    // Now we map to create separate lists for sample IDs, VCF files, and index files
-    all_gvcf_ch = gvcf_ch
-        .collect { listOfTuples ->
-            def sample_ids = listOfTuples.collate(3).collect { it[0] }   // Collect sample IDs from every 3rd element
-            def vcf_files = listOfTuples.collate(3).collect { it[1] }    // Collect VCF files
-            def vcf_index_files = listOfTuples.collate(3).collect { it[2] } // Collect VCF index files
-            return tuple(sample_ids, vcf_files, vcf_index_files)
-        }
-
-    // Combine GVCFs
-    combined_gvcf_ch = combineGVCFs(all_gvcf_ch, indexed_genome_ch.collect())
-
-    // Run GenotypeGVCFs
-    final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, indexed_genome_ch.collect())
 
     // Conditionally apply variant recalibration or filtering
     if (params.variant_recalibration) {
@@ -181,9 +232,9 @@ workflow {
                 return "--resource:${baseName},${resourceArgs} ${file.getName()}" // Only the filename, no full path
             }
             .collect()
-        filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, indexed_genome_ch.collect(), qsrc_vcf_ch.collect())
+        filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, ref_ch.collect(), qsrc_vcf_ch.collect())
     } else {
-        filtered_vcf_ch = filterVCF(final_vcf_ch, indexed_genome_ch.collect())
+        filtered_vcf_ch = filterVCF(final_vcf_ch, ref_ch.collect())
     }
 
     // Conditionally run identityAnalysis if identity_analysis is true

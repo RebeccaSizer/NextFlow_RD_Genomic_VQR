@@ -1,4 +1,3 @@
-// Use newest nextflow dsl
 nextflow.enable.dsl = 2
 
 process haplotypeCaller {
@@ -51,4 +50,3 @@ process haplotypeCaller {
     echo "Variant Calling for Sample: ${sample_id} Complete"
     """
 }
-
