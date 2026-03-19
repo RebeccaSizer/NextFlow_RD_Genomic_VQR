@@ -10,7 +10,9 @@ log.info """\
     samplesheet     : ${params.samplesheet}
     genome          : ${params.genome_file}
     genome index    : ${params.genome_index_files}
-    genome index bowtie2 : ${params.bowtie2_index}
+    genome index bowtie2 : ${params.genome_index_bowtie2}
+    reference_fai   : ${params.reference_fai}
+    reference_dict  : ${params.reference_dict}
     index genome    : ${params.index_genome}
     qsr truth vcfs  : ${params.qsrVcfs}
     output directory: ${params.outdir}
@@ -97,7 +99,7 @@ workflow {
     }
 
     else if (params.index_genome == false && params.aligner == "bowtie2") {
-        indexed_genome_ch = Channel.fromPath(params.genome_index_files)
+        indexed_genome_ch = Channel.fromPath(params.genome_index_bowtie2)
     }
 
 
