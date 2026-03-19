@@ -56,6 +56,11 @@
                     "description": "Flag to indicate if FASTQC should be performed",
                     "default": false
                 },
+                "fastp": {
+                    "type": "boolean",
+                    "description": "Flag to indicate if fastp should be performed",
+                    "default": false
+                },
                 "index_genome": {
                     "type": "boolean",
                     "description": "Index the genome if not already done",
@@ -76,6 +81,12 @@
                     "description": "Flag to indicate if variant recalibration should be performed",
                     "default": false
                 },
+                "variant_caller": {
+                    "type": "string",
+                    "description": "Variant caller to use (haplotype-caller or DeepVariant)",
+                    "default": "haplotype-caller",
+                    "enum": ["haplotype-caller", "DeepVariant"]
+                },
                 "identity_analysis": {
                     "type": "boolean",
                     "description": "Flag to indicate if identity analysis should be performed",
@@ -93,7 +104,9 @@
                 "aligner",
                 "bqsr",
                 "fastqc",
+                "fastp",
                 "variant_recalibration",
+                "variant_caller",
                 "identity_analysis",
                 "degraded_dna",
                 "max_memory",
