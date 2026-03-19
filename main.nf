@@ -103,15 +103,15 @@ workflow {
 
     //create a channel for fasta files 
     if (params.aligner == "bowtie2") {
-    indexed_genome_ch = Channel.fromPath("$projectDir/results/GENOME_IDX/*.bt2")
+    indexed_genome_ch = Channel.fromPath(params.genome_index_bowtie2)
     ref_ch = Channel.fromPath([
-        "$projectDir/results/GENOME_IDX/Homo_sapiens_assembly38.fasta",
-        "$projectDir/results/GENOME_IDX/Homo_sapiens_assembly38.fasta.fai",
-        "$projectDir/results/GENOME_IDX/Homo_sapiens_assembly38.fasta.dict"
+        params.genome_file,
+        params.reference_fai,
+        params.reference_dict
     ])
     
     } else {
-        indexed_genome_ch = Channel.fromPath("$projectDir/results/GENOME_IDX/*.fast*")
+        indexed_genome_ch = Channel.fromPath(params.genome_index_files)
         ref_ch = indexed_genome_ch  // WGS/BWA index can be used as reference for GATK
     }
     // Create qsrc_vcf_ch channel
