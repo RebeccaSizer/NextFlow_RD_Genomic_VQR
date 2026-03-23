@@ -1,5 +1,10 @@
 nextflow.enable.dsl = 2
-
+/*
+ * This process runs GATK HaplotypeCaller to call variants from the input BAM file.
+ * It takes the sample ID, BAM file, BAM index, and the genome index files as input,
+ * and produces a VCF file with the called variants and its index as output.
+ */
+ 
 process haplotypeCaller {
     if (params.platform == 'local') {
         label 'process_low'
