@@ -235,6 +235,8 @@ workflow {
             }
             .collect()
         filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, ref_ch.collect(), qsrc_vcf_ch.collect())
+    } else if (params.variant_caller == "deepvariant") {
+        filtered_vcf_ch = final_vcf_ch 
     } else {
         filtered_vcf_ch = filterVCF(final_vcf_ch, ref_ch.collect())
     }
